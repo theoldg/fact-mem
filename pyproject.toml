@@ -1,0 +1,14 @@
+[project]
+name = "fact-retrieval"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "ipywidgets>=8.1.8",
+    "jupyter>=1.1.1",
+    "jupyterlab>=4.5.6",
+    "pip>=26.0.1",
+    "torch>=2.11.0",
+    "transformers>=5.5.4",
+]
