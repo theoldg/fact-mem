@@ -1,6 +1,6 @@
 import unittest
 from dataclasses import dataclass
-from query_massive_tokens import query_sequence
+from query_massive_tokens import InfiniGramSearcher
 from build_massive_tokens import memmap_tokens
 
 
@@ -16,6 +16,7 @@ class TestQueryMassiveTokens(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.massive_tokens = memmap_tokens(mode="r")
+        cls.searcher = InfiniGramSearcher()
 
     def test_query_sequences(self):
         # Define test cases using dataclass
@@ -34,7 +35,7 @@ class TestQueryMassiveTokens(unittest.TestCase):
                 seq = self.massive_tokens[
                     case.shard, case.sample, case.start : case.end
                 ]
-                results = query_sequence(seq)
+                results = self.searcher.query_sequence(seq)
 
                 found = False
                 for res in results:

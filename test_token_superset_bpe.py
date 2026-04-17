@@ -45,22 +45,28 @@ class TestBPETokenSupersetSearcher(unittest.TestCase):
     def test_specific_sequence_inclusion(self):
         target = "hello"
         results = self.searcher.search(target)
-        
+
         # tokenize(".hello ")
-        seq_dot_hello_space = self.searcher.tokenizer.encode(".hello ", add_special_tokens=False)
-        
+        seq_dot_hello_space = self.searcher.tokenizer.encode(
+            ".hello ", add_special_tokens=False
+        )
+
         # Check if it is in results
         is_in_results = list(seq_dot_hello_space) in results
-        
+
         # We expect it to NOT be in results because it is not minimal
         self.assertFalse(
             is_in_results,
             f"Sequence for '.hello ' {seq_dot_hello_space} was found in results for 'hello', but it should not be minimal.",
         )
-        
+
         # tokenize("hello") should be in results
         seq_hello = self.searcher.tokenizer.encode("hello", add_special_tokens=False)
-        self.assertIn(list(seq_hello), results, f"Sequence for 'hello' {seq_hello} should be in results for 'hello'")
+        self.assertIn(
+            list(seq_hello),
+            results,
+            f"Sequence for 'hello' {seq_hello} should be in results for 'hello'",
+        )
 
     def test_specific_sequence_is_superset_of_minimal(self):
         cases = [
@@ -69,20 +75,22 @@ class TestBPETokenSupersetSearcher(unittest.TestCase):
             (" hello", " hello ."),
             ("hello.", " hello. "),
         ]
-        
+
         for target, extended in cases:
             with self.subTest(target=target, extended=extended):
                 results = self.searcher.search(target)
                 self.assertGreater(len(results), 0, f"No results for {target}")
-                
-                seq_extended = self.searcher.tokenizer.encode(extended, add_special_tokens=False)
-                
+
+                seq_extended = self.searcher.tokenizer.encode(
+                    extended, add_special_tokens=False
+                )
+
                 found_subsequence = False
                 for res in results:
                     if self._is_subsequence(res, seq_extended):
                         found_subsequence = True
                         break
-                        
+
                 self.assertTrue(
                     found_subsequence,
                     f"Expected at least one result for {target!r} to be a subsequence of {extended!r} (tokens: {seq_extended})",
@@ -91,7 +99,7 @@ class TestBPETokenSupersetSearcher(unittest.TestCase):
     def _is_subsequence(self, sub, main):
         n = len(sub)
         for i in range(len(main) - n + 1):
-            if main[i:i+n] == sub:
+            if main[i : i + n] == sub:
                 return True
         return False
 
