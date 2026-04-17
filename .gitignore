@@ -10,11 +10,11 @@ wheels/
 .venv
 
 # Data
-pile-tokenized/
-indexes/
-
-# Infinigram
-infini-gram-mini/
+pile-data/
 
 # Notebooks
 **/*.ipynb
+
+
+# AAA
+_old_demo/
