@@ -1,107 +1,39 @@
 import fire
 import numpy as np
 from token_superset_bpe import BPETokenSupersetSearcher
-from query_massive_tokens import FILE_INDEX_TO_SHARD, QueryResult
-from build_massive_tokens import (
-    memmap_tokens,
-    STEPS_PER_CHECKPOINT,
-    TOKENS_PER_CHECKPOINT,
-)
-from infini_gram.engine import InfiniGramEngine
-import time
-from typing import List, Dict, Any
-from concurrent.futures import ThreadPoolExecutor
-
+from query_massive_tokens import InfiniGramSearcher
 
 class MassiveTokenSearcher:
-    def __init__(
-        self,
-        index_dir: str = "pile-data/index_dir",
-        model_name: str = "EleutherAI/pythia-70m",
-    ):
+    def __init__(self, index_dir: str = "pile-data/index_dir", model_name: str = "EleutherAI/pythia-70m", max_workers: int = 10):
         """
-        Initializes the searcher with a BPE searcher and an Infini-Gram engine.
-
+        Initializes the searcher with a BPE searcher and an Infini-Gram searcher.
+        
         Args:
             index_dir: The directory containing the Infini-Gram index.
             model_name: The name of the model for the tokenizer.
+            max_workers: Number of threads for parallel querying.
         """
         print("Initializing BPETokenSupersetSearcher...")
         self.bpe_searcher = BPETokenSupersetSearcher(model_name=model_name)
         self.tokenizer = self.bpe_searcher.tokenizer
+        
+        self.infinigram_searcher = InfiniGramSearcher(index_dir=index_dir, max_workers=max_workers)
 
-        print(f"Initializing InfiniGramEngine with index_dir={index_dir}...")
-        t0 = time.time()
-        self.engine = InfiniGramEngine(
-            index_dir=index_dir, eos_token_id=0, vocab_size=65535
-        )
-        print(f"Engine initialized in {time.time() - t0:.2f} seconds.")
-
-        print("Loading massive_tokens memmap...")
-        self.massive_tokens = memmap_tokens(mode="r")
-        self.samples_per_shard = STEPS_PER_CHECKPOINT * TOKENS_PER_CHECKPOINT
-
-    def search(self, query: str, regex: str | None = None) -> List[Dict[str, Any]]:
+    def search(self, query: str, regex: str | None = None):
         """
         Finds all token representations for a query and returns all matches in the dataset.
-
+        
         Args:
             query: The string to search for.
             regex: Optional regex pattern to filter token sequences.
-
+            
         Returns:
             A list of dicts containing the matching sequence and the result location.
         """
         sequences = self.bpe_searcher.search(query, regex_pattern=regex)
         print(f"Found {len(sequences)} token sequences for query {query!r}")
-
-        all_results = []
-
-        def process_sequence(seq):
-            if isinstance(seq, np.ndarray):
-                seq_list = seq.tolist()
-            else:
-                seq_list = seq
-
-            find_res = self.engine.find(input_ids=seq_list)
-
-            results = []
-            if isinstance(find_res, dict) and "segment_by_shard" in find_res:
-                for s, (start, end) in enumerate(find_res["segment_by_shard"]):
-                    for rank in range(start, end):
-                        doc = self.engine.get_doc_by_rank(s=s, rank=rank)
-                        if isinstance(doc, dict) and "doc_ix" in doc:
-                            doc_ix = doc["doc_ix"]
-                            needle_offset = doc["needle_offset"]
-
-                            file_idx = doc_ix // self.samples_per_shard
-                            sample_index = doc_ix % self.samples_per_shard
-
-                            shard = FILE_INDEX_TO_SHARD[file_idx]
-
-                            results.append(
-                                QueryResult(
-                                    shard=shard,
-                                    sample_index=sample_index,
-                                    token_offset=needle_offset,
-                                )
-                            )
-            return seq, results
-
-        print(f"Querying {len(sequences)} sequences in parallel...")
-        t0 = time.time()
-
-        # Use ThreadPoolExecutor
-        with ThreadPoolExecutor(max_workers=96) as executor:
-            results_iter = executor.map(process_sequence, sequences)
-
-            for seq, res in results_iter:
-                print(f"  Sequence {seq} yielded {len(res)} results.")
-                for r in res:
-                    all_results.append({"sequence": seq, "result": r})
-
-        print(f"Parallel query completed in {time.time() - t0:.2f} seconds.")
-        return all_results
+        
+        return self.infinigram_searcher.query_sequences(sequences)
 
     def display(self, query: str, context_len: int = 50, limit: int = 10, regex: str | None = None):
         """
@@ -131,7 +63,7 @@ class MassiveTokenSearcher:
             sample_idx = res.sample_index
             offset = res.token_offset
 
-            doc_tokens = self.massive_tokens[shard, sample_idx]
+            doc_tokens = self.infinigram_searcher.massive_tokens[shard, sample_idx]
 
             match_len = len(seq)
             actual_offset = offset
