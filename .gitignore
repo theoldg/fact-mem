@@ -12,6 +12,9 @@ wheels/
 # Data
 pile-data/
 
+# Cache
+.cache/
+
 # Notebooks
 **/*.ipynb
 

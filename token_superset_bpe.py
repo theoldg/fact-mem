@@ -2,35 +2,55 @@ import json
 import collections
 import re
 import fire
+import os
+import pickle
 from transformers import AutoTokenizer
 
 
 class BPETokenSupersetSearcher:
     """Searcher for token sequences that form a superset of a given string."""
 
-    def __init__(self, model_name: str = "EleutherAI/pythia-70m", merges_path: str | None = None) -> None:
-        """Initialize the searcher with a model and merges file."""
+    def __init__(self, model_name: str = "EleutherAI/pythia-70m") -> None:
+        """Initialize the searcher with a model."""
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.vocab = self.tokenizer.get_vocab()
         self.id_to_token = {v: k for k, v in self.vocab.items()}
 
-        if merges_path is None:
-            merges_path = "/usr/local/google/home/lamort/.gemini/jetski/brain/f5d171ba-e8de-4ae3-9f8c-0fd4c0c66002/scratch/merges.json"
-
-        with open(merges_path, "r") as f:
-            merges_list = json.load(f)
-
+        # Extract merges directly from the tokenizer's JSON representation
+        tokenizer_json = json.loads(self.tokenizer.backend_tokenizer.to_str())
+        model_data = tokenizer_json.get("model", {})
+        merges_list = model_data.get("merges", [])
         self.merge_set = set(tuple(pair) for pair in merges_list)
 
-        self.suffix_index = collections.defaultdict(list)
-        self.prefix_index = collections.defaultdict(list)
+        cache_dir = "/usr/local/google/home/lamort/Documents/fact-mem/.cache"
+        prefix_cache_path = os.path.join(cache_dir, "prefix_index.pkl")
+        suffix_cache_path = os.path.join(cache_dir, "suffix_index.pkl")
 
-        print("Building indexes...")
-        for token, id in self.vocab.items():
-            for i in range(1, len(token) + 1):
-                self.suffix_index[token[-i:]].append(id)
-                self.prefix_index[token[:i]].append(id)
-        print("Indexes built.")
+        if os.path.exists(prefix_cache_path) and os.path.exists(suffix_cache_path):
+            print("Loading indexes from cache...")
+            with open(prefix_cache_path, "rb") as f:
+                self.prefix_index = pickle.load(f)
+            with open(suffix_cache_path, "rb") as f:
+                self.suffix_index = pickle.load(f)
+            print("Indexes loaded from cache.")
+        else:
+            self.suffix_index = collections.defaultdict(list)
+            self.prefix_index = collections.defaultdict(list)
+
+            print("Building indexes...")
+            for token, id in self.vocab.items():
+                for i in range(1, len(token) + 1):
+                    self.suffix_index[token[-i:]].append(id)
+                    self.prefix_index[token[:i]].append(id)
+            print("Indexes built.")
+
+            print("Caching indexes...")
+            os.makedirs(cache_dir, exist_ok=True)
+            with open(prefix_cache_path, "wb") as f:
+                pickle.dump(self.prefix_index, f)
+            with open(suffix_cache_path, "wb") as f:
+                pickle.dump(self.suffix_index, f)
+            print("Indexes cached.")
 
     def get_bpe_representation(self, text: str) -> str:
         """Get the BPE representation of a string by concatenating its tokens."""
@@ -88,7 +108,7 @@ class BPETokenSupersetSearcher:
                 continue
             seen.add(seq_tuple)
 
-            # 1. NEW: Round-Trip Validation (The Ground Truth Check)
+            # 1. Round-Trip Validation (The Ground Truth Check)
             # Decode the sequence to a raw string, then re-encode it.
             decoded_text = self.tokenizer.decode(seq)
             re_encoded = self.tokenizer.encode(decoded_text, add_special_tokens=False)
@@ -121,7 +141,7 @@ class BPETokenSupersetSearcher:
         return unique_results
 
 
-def main(target: str = "hello world", regex: str | None = None) -> None:
+def main(target: str, regex: str | None = None) -> None:
     """Main function to run the search from CLI."""
     searcher = BPETokenSupersetSearcher()
     res = searcher.search(target, regex_pattern=regex)
