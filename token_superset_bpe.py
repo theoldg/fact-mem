@@ -1,5 +1,7 @@
 import json
 import collections
+import functools
+from tqdm import tqdm
 import re
 import fire
 import os
@@ -62,33 +64,43 @@ class BPETokenSupersetSearcher:
     def search(self, target_string: str, regex_pattern: str | None = None) -> list[list[int]]:
         """Search for minimal token sequences covering the target string."""
         S_bpe = self.get_bpe_representation(target_string)
+        target_ids = self.tokenizer.encode(target_string, add_special_tokens=False)
         print(f"BPE representation of {target_string!r}: {S_bpe!r}")
 
         results = []
         L = len(S_bpe)
+        max_depth = len(target_ids) + 3
 
-        def dfs(current_seq: list[int], remainder: str) -> None:
-            if not remainder:
-                results.append(current_seq)
-                return
-
-            for i in range(1, len(remainder) + 1):
-                prefix = remainder[:i]
-                if prefix in self.vocab:
-                    token_id = self.vocab[prefix]
-
-                    t_prev = self.id_to_token[current_seq[-1]]
-                    t_curr = self.id_to_token[token_id]
-
-                    if (t_prev, t_curr) in self.merge_set:
-                        continue
-
-                    dfs(current_seq + [token_id], remainder[i:])
+        pbar = tqdm(desc="Exploring states", unit="states")
 
         # Case k = 1: S_bpe is a substring of a single token
         for token, id in self.vocab.items():
             if S_bpe in token:
                 results.append([id])
+
+        @functools.lru_cache(maxsize=None)
+        def dfs(remainder: str, max_len: int, prev_token: int | None = None) -> list[tuple[int, ...]]:
+            pbar.update(1)
+            if not remainder:
+                return [()]
+            if max_len <= 0:
+                return []
+
+            local_results = []
+            for i in range(1, len(remainder) + 1):
+                prefix = remainder[:i]
+                if prefix in self.vocab:
+                    token_id = self.vocab[prefix]
+                    
+                    if prev_token is not None:
+                        t_prev = self.id_to_token[prev_token]
+                        t_curr = self.id_to_token[token_id]
+                        if (t_prev, t_curr) in self.merge_set:
+                            continue
+                            
+                    for sub_seq in dfs(remainder[i:], max_len - 1, token_id):
+                        local_results.append((token_id,) + sub_seq)
+            return local_results
 
         # Case k >= 2: DFS
         for i in range(1, L + 1):
@@ -96,13 +108,17 @@ class BPETokenSupersetSearcher:
             candidates = self.suffix_index.get(p1, [])
             for v1 in candidates:
                 remainder = S_bpe[i:]
-                dfs([v1], remainder)
+                for sub_seq in dfs(remainder, max_depth - 1, v1):
+                     results.append([v1] + list(sub_seq))
+
+        pbar.close()
+        print("BPE search complete. Post-processing results...")
 
         # Filter for minimality and uniqueness
         unique_results = []
         seen = set()
 
-        for seq in results:
+        for seq in tqdm(results, desc="Post-processing results"):
             seq_tuple = tuple(seq)
             if seq_tuple in seen:
                 continue
@@ -113,28 +129,30 @@ class BPETokenSupersetSearcher:
             decoded_text = self.tokenizer.decode(seq)
             re_encoded = self.tokenizer.encode(decoded_text, add_special_tokens=False)
 
-            # If the tokenizer doesn't naturally produce this exact sequence
-            # for these exact bytes, it's an impossible sequence.
             if re_encoded != seq:
                 continue
 
             if regex_pattern and not re.search(regex_pattern, decoded_text):
                 continue
 
-            # 2. Existing Substring Check
-            full_str = "".join([self.id_to_token[id] for id in seq])
-            if S_bpe not in full_str:
-                continue
 
             # 3. Existing Minimality Check
             minimal = True
+            target_len = len(target_ids)
             for i in range(len(seq)):
                 sub_seq = seq[:i] + seq[i + 1 :]
-                sub_str = "".join([self.id_to_token[id] for id in sub_seq])
-                if S_bpe in sub_str:
+                
+                # Fast subsequence check on token IDs
+                sub_matched = False
+                for j in range(len(sub_seq) - target_len + 1):
+                    if sub_seq[j:j+target_len] == target_ids:
+                        sub_matched = True
+                        break
+                        
+                if sub_matched:
                     minimal = False
                     break
-
+                    
             if minimal:
                 unique_results.append(seq)
 

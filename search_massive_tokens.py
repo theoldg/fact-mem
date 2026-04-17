@@ -9,7 +9,7 @@ class MassiveTokenSearcher:
         self,
         index_dir: str = "pile-data/index_dir",
         model_name: str = "EleutherAI/pythia-70m",
-        max_workers: int = 10,
+        max_workers: int = 96,
     ):
         """
         Initializes the searcher with a BPE searcher and an Infini-Gram searcher.
