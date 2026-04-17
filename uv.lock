@@ -529,6 +529,7 @@ dependencies = [
     { name = "pandas" },
     { name = "pip" },
     { name = "pyarrow" },
+    { name = "pybind11" },
     { name = "torch" },
     { name = "transformers" },
 ]
@@ -542,6 +543,7 @@ requires-dist = [
     { name = "pandas", specifier = ">=3.0.2" },
     { name = "pip", specifier = ">=26.0.1" },
     { name = "pyarrow", specifier = ">=23.0.1" },
+    { name = "pybind11", specifier = ">=3.0.3" },
     { name = "torch", specifier = ">=2.11.0" },
     { name = "transformers", specifier = ">=5.5.4" },
 ]
@@ -1746,6 +1748,15 @@ wheels = [
     { url = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/pyarrow/pyarrow-23.0.1-cp314-cp314t-musllinux_1_2_aarch64.whl", hash = "sha256:46718a220d64677c93bc243af1d44b55998255427588e400677d7192671845c7" },
     { url = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/pyarrow/pyarrow-23.0.1-cp314-cp314t-musllinux_1_2_x86_64.whl", hash = "sha256:a09f3876e87f48bc2f13583ab551f0379e5dfb83210391e68ace404181a20690" },
     { url = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/pyarrow/pyarrow-23.0.1-cp314-cp314t-win_amd64.whl", hash = "sha256:527e8d899f14bd15b740cd5a54ad56b7f98044955373a17179d5956ddb93d9ce" },
+]
+
+[[package]]
+name = "pybind11"
+version = "3.0.3"
+source = { registry = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/simple/" }
+sdist = { url = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/pybind11/pybind11-3.0.3.tar.gz", hash = "sha256:00471cdb816882c484708bc5dde80815c8c11cea540ab2cc6410f5ddea434755" }
+wheels = [
+    { url = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/pybind11/pybind11-3.0.3-py3-none-any.whl", hash = "sha256:fb5f8e4a64946b4dcc0451c83a8c384f803bc0a62dd1ba02f199e97dbc9aad4c" },
 ]
 
 [[package]]
