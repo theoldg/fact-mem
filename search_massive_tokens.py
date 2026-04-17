@@ -3,11 +3,17 @@ import numpy as np
 from token_superset_bpe import BPETokenSupersetSearcher
 from query_massive_tokens import InfiniGramSearcher
 
+
 class MassiveTokenSearcher:
-    def __init__(self, index_dir: str = "pile-data/index_dir", model_name: str = "EleutherAI/pythia-70m", max_workers: int = 10):
+    def __init__(
+        self,
+        index_dir: str = "pile-data/index_dir",
+        model_name: str = "EleutherAI/pythia-70m",
+        max_workers: int = 10,
+    ):
         """
         Initializes the searcher with a BPE searcher and an Infini-Gram searcher.
-        
+
         Args:
             index_dir: The directory containing the Infini-Gram index.
             model_name: The name of the model for the tokenizer.
@@ -16,26 +22,34 @@ class MassiveTokenSearcher:
         print("Initializing BPETokenSupersetSearcher...")
         self.bpe_searcher = BPETokenSupersetSearcher(model_name=model_name)
         self.tokenizer = self.bpe_searcher.tokenizer
-        
-        self.infinigram_searcher = InfiniGramSearcher(index_dir=index_dir, max_workers=max_workers)
+
+        self.infinigram_searcher = InfiniGramSearcher(
+            index_dir=index_dir, max_workers=max_workers
+        )
 
     def search(self, query: str, regex: str | None = None):
         """
         Finds all token representations for a query and returns all matches in the dataset.
-        
+
         Args:
             query: The string to search for.
             regex: Optional regex pattern to filter token sequences.
-            
+
         Returns:
             A list of dicts containing the matching sequence and the result location.
         """
         sequences = self.bpe_searcher.search(query, regex_pattern=regex)
         print(f"Found {len(sequences)} token sequences for query {query!r}")
-        
+
         return self.infinigram_searcher.query_sequences(sequences)
 
-    def display(self, query: str, context_len: int = 50, limit: int = 10, regex: str | None = None):
+    def display(
+        self,
+        query: str,
+        context_len: int = 50,
+        limit: int = 10,
+        regex: str | None = None,
+    ):
         """
         Searches for a query and displays the results in context.
 
