@@ -10,6 +10,7 @@ from build_massive_tokens import (
 from infini_gram.engine import InfiniGramEngine
 import time
 from typing import List, Dict, Any
+from concurrent.futures import ThreadPoolExecutor
 
 
 class MassiveTokenSearcher:
@@ -56,34 +57,18 @@ class MassiveTokenSearcher:
 
         all_results = []
 
-        for i, seq in enumerate(sequences):
-            decoded_seq = self.tokenizer.decode(seq)
-            print(
-                f"\n[{i + 1}/{len(sequences)}] Querying sequence: {seq} (decodes to: {decoded_seq!r})"
-            )
-
+        def process_sequence(seq):
             if isinstance(seq, np.ndarray):
                 seq_list = seq.tolist()
             else:
                 seq_list = seq
 
-            print("  Calling engine.find()...")
-            t0 = time.time()
             find_res = self.engine.find(input_ids=seq_list)
-            print(f"  engine.find() took {time.time() - t0:.2f} seconds.")
 
             results = []
             if isinstance(find_res, dict) and "segment_by_shard" in find_res:
                 for s, (start, end) in enumerate(find_res["segment_by_shard"]):
-                    num_matches = end - start
-                    print(f"    Shard {s}: found {num_matches} raw matches")
-
                     for rank in range(start, end):
-                        if rank - start > 0 and (rank - start) % 1000 == 0:
-                            print(
-                                f"      Processed {rank - start}/{num_matches} matches in shard {s}..."
-                            )
-
                         doc = self.engine.get_doc_by_rank(s=s, rank=rank)
                         if isinstance(doc, dict) and "doc_ix" in doc:
                             doc_ix = doc["doc_ix"]
@@ -101,10 +86,21 @@ class MassiveTokenSearcher:
                                     token_offset=needle_offset,
                                 )
                             )
-            print(f"  Processed {len(results)} results for this sequence.")
-            for r in results:
-                all_results.append({"sequence": seq, "result": r})
+            return seq, results
 
+        print(f"Querying {len(sequences)} sequences in parallel...")
+        t0 = time.time()
+
+        # Use ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=96) as executor:
+            results_iter = executor.map(process_sequence, sequences)
+
+            for seq, res in results_iter:
+                print(f"  Sequence {seq} yielded {len(res)} results.")
+                for r in res:
+                    all_results.append({"sequence": seq, "result": r})
+
+        print(f"Parallel query completed in {time.time() - t0:.2f} seconds.")
         return all_results
 
     def display(self, query: str, context_len: int = 50, limit: int = 10, regex: str | None = None):
