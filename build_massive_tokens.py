@@ -15,7 +15,7 @@ MACRO_STEPS = 95
 
 def memmap_tokens(mode: str) -> np.memmap:
     return np.memmap(
-        "pile-tokenized/massive_tokens.npy",
+        "pile-tokenized/massive_tokens",
         dtype=np.uint16,
         mode=mode,
         shape=(

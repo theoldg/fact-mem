@@ -523,6 +523,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "fastparquet" },
+    { name = "infini-gram" },
     { name = "ipywidgets" },
     { name = "jupyter" },
     { name = "jupyterlab" },
@@ -537,6 +538,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "fastparquet", specifier = ">=2026.3.0" },
+    { name = "infini-gram", specifier = ">=2.6.0" },
     { name = "ipywidgets", specifier = ">=8.1.8" },
     { name = "jupyter", specifier = ">=1.1.1" },
     { name = "jupyterlab", specifier = ">=4.5.6" },
@@ -730,6 +732,24 @@ source = { registry = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-sta
 sdist = { url = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/idna/idna-3.11.tar.gz", hash = "sha256:795dafcc9c04ed0c1fb032c2aa73654d8e8c5023a7df64a53f39190ada629902" }
 wheels = [
     { url = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/idna/idna-3.11-py3-none-any.whl", hash = "sha256:771a87f49d9defaf64091e6e6fe9c18d4833f140bd19464795bc32d966ca37ea" },
+]
+
+[[package]]
+name = "infini-gram"
+version = "2.6.0"
+source = { registry = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/simple/" }
+dependencies = [
+    { name = "tqdm" },
+]
+wheels = [
+    { url = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/infini-gram/infini_gram-2.6.0-cp312-cp312-macosx_10_15_x86_64.whl", hash = "sha256:09a45cc44b02fcad5827d34497699ff7bfe6371030bf3f8447bf128c231f2f46" },
+    { url = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/infini-gram/infini_gram-2.6.0-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:8043d5901d23220ca6e01e58eba64dc02b379ffce1971c6db6faf9ac67fa4d45" },
+    { url = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/infini-gram/infini_gram-2.6.0-cp312-cp312-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:2afd4a8321c58edcc5297aab11f05df4957f7d3354e75f7c74c234b8e7be51ad" },
+    { url = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/infini-gram/infini_gram-2.6.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:8a84048feabf6d7e224d865f4a1e1706c8a33aa849ae39201d5e00d9e3e876bb" },
+    { url = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/infini-gram/infini_gram-2.6.0-cp313-cp313-macosx_10_15_x86_64.whl", hash = "sha256:e915293a28177a7910cee6a0efcc6e637b634d3a97d3d6e8aa7092e9bed6779e" },
+    { url = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/infini-gram/infini_gram-2.6.0-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:8be7a7b197314b11471b721f746bc29c5ed58aa084e6a69c1fdc126a1ced01cc" },
+    { url = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/infini-gram/infini_gram-2.6.0-cp313-cp313-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:67bfa4de37e104cc3aa5b6aeb00e1a3dc94ad7844df01d0ab057256ce085e56d" },
+    { url = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/infini-gram/infini_gram-2.6.0-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:9e68b81ebc62fb578ac08d4a59481b7c51d79bb16e2f0bdb6e9b3a91a5fa262a" },
 ]
 
 [[package]]
