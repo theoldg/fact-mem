@@ -11,11 +11,19 @@ import time
 
 
 @dataclass(frozen=True)
+class ContextResult:
+    before: str
+    match: str
+    after: str
+
+
+@dataclass
 class QueryResult:
     shard: int
     sample_index: int
     token_offset: int
     sequence: list[int]
+    context: ContextResult | None = None
 
 
 def _get_file_index_to_shard() -> list[int]:

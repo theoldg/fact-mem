@@ -1,5 +1,4 @@
 from query_massive_tokens import QueryResult
-from search_massive_tokens import MassiveTokenSearcher
 import html
 import IPython
 
@@ -34,13 +33,14 @@ def plot_shard_histogram(results: list[QueryResult]):
 
 def visualize_result_html(
     res: QueryResult,
-    searcher: MassiveTokenSearcher,
     context_len: int = 50,
 ):
     """
     Creates an HTML visualization of a single search result for Jupyter Notebooks.
     """
-    context = searcher.get_context(res, context_len)
+    context = res.context
+    if context is None:
+        raise ValueError("No context found for result!")
 
     # Escape HTML special characters
     decoded_before = html.escape(context.before)
