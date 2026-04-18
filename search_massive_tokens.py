@@ -1,7 +1,7 @@
 import fire
 import numpy as np
 from token_superset_bpe import BPETokenSupersetSearcher
-from query_massive_tokens import InfiniGramSearcher
+from query_massive_tokens import InfiniGramSearcher, QueryResult
 
 
 class MassiveTokenSearcher:
@@ -10,6 +10,7 @@ class MassiveTokenSearcher:
         index_dir: str = "pile-data/index_dir",
         model_name: str = "EleutherAI/pythia-70m",
         max_workers: int = 96,
+        verbose: bool = True,
     ):
         """
         Initializes the searcher with a BPE searcher and an Infini-Gram searcher.
@@ -18,8 +19,11 @@ class MassiveTokenSearcher:
             index_dir: The directory containing the Infini-Gram index.
             model_name: The name of the model for the tokenizer.
             max_workers: Number of threads for parallel querying.
+            verbose: Whether to print progress messages.
         """
-        print("Initializing BPETokenSupersetSearcher...")
+        self.verbose = verbose
+        if self.verbose:
+            print("Initializing BPETokenSupersetSearcher...")
         self.bpe_searcher = BPETokenSupersetSearcher(model_name=model_name)
         self.tokenizer = self.bpe_searcher.tokenizer
 
@@ -27,7 +31,7 @@ class MassiveTokenSearcher:
             index_dir=index_dir, max_workers=max_workers
         )
 
-    def search(self, query: str, regex: str | None = None):
+    def search(self, query: str, regex: str | None = None) -> list[QueryResult]:
         """
         Finds all token representations for a query and returns all matches in the dataset.
 
@@ -39,9 +43,10 @@ class MassiveTokenSearcher:
             A list of dicts containing the matching sequence and the result location.
         """
         sequences = self.bpe_searcher.search(query, regex_pattern=regex)
-        print(f"Found {len(sequences)} token sequences for query {query!r}")
+        if self.verbose:
+            print(f"Found {len(sequences)} token sequences for query {query!r}")
 
-        return self.infinigram_searcher.query_sequences(sequences)
+        return self.infinigram_searcher.query_sequences(sequences, verbose=self.verbose)
 
     def display(
         self,
@@ -69,10 +74,8 @@ class MassiveTokenSearcher:
         print(f"Displaying top {min(limit, len(results))} results for query: {query!r}")
         print("=" * 80)
 
-        for item in results[:limit]:
-            seq = item["sequence"]
-            res = item["result"]
-
+        for res in results[:limit]:
+            seq = res.sequence
             shard = res.shard
             sample_idx = res.sample_index
             offset = res.token_offset

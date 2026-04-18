@@ -28,27 +28,34 @@ class TestQueryMassiveTokens(unittest.TestCase):
             TestCase(shard=20, sample=5, start=20, end=30),
         ]
 
+        sequences = [
+            self.massive_tokens[case.shard, case.sample, case.start : case.end]
+            for case in test_cases
+        ]
+        
+        results = self.searcher.query_sequences(sequences)
+
         for case in test_cases:
             with self.subTest(
                 shard=case.shard, sample=case.sample, start=case.start, end=case.end
             ):
                 seq = self.massive_tokens[
                     case.shard, case.sample, case.start : case.end
-                ]
-                results = self.searcher.query_sequence(seq)
-
+                ].tolist()
+                
                 found = False
                 for res in results:
                     if (
                         res.shard == case.shard
                         and res.sample_index == case.sample
                         and res.token_offset == case.start
+                        and res.sequence == seq
                     ):
                         found = True
                         break
                 self.assertTrue(
                     found,
-                    f"Sequence not found in shard {case.shard}, sample {case.sample}, offset {case.start}. Results: {results}",
+                    f"Sequence not found in shard {case.shard}, sample {case.sample}, offset {case.start}.",
                 )
 
 

@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import Any
 import numpy as np
 from infini_gram.engine import InfiniGramEngine
 from build_massive_tokens import (
@@ -16,6 +15,7 @@ class QueryResult:
     shard: int
     sample_index: int
     token_offset: int
+    sequence: list[int]
 
 
 def _get_file_index_to_shard() -> list[int]:
@@ -62,71 +62,72 @@ class InfiniGramSearcher:
         find_res = self.engine.find(input_ids=seq_list)
         results = []
 
-        if isinstance(find_res, dict) and "segment_by_shard" in find_res:
-            for s, (start, end) in enumerate(find_res["segment_by_shard"]):
-                for rank in range(start, end):
-                    doc = self.engine.get_doc_by_rank(s=s, rank=rank)
-                    if isinstance(doc, dict) and "doc_ix" in doc:
-                        doc_ix = doc["doc_ix"]
-                        needle_offset = doc["needle_offset"]
+        if not isinstance(find_res, dict) or "segment_by_shard" not in find_res:
+            return results
 
-                        file_idx = doc_ix // self.samples_per_shard
-                        sample_index = doc_ix % self.samples_per_shard
+        for s, (start, end) in enumerate(find_res["segment_by_shard"]):
+            for rank in range(start, end):
+                doc = self.engine.get_doc_by_rank(s=s, rank=rank)
+                if not isinstance(doc, dict) or "doc_ix" not in doc:
+                    continue
 
-                        shard = FILE_INDEX_TO_SHARD[file_idx]
+                doc_ix = doc["doc_ix"]
+                needle_offset = doc["needle_offset"]
 
-                        # Fallback mechanism
-                        actual_offset = needle_offset
-                        doc_tokens = self.massive_tokens[shard, sample_index]
-                        match_len = len(seq_list)
-                        seq_arr = np.array(seq_list, dtype=np.uint16)
+                file_idx = doc_ix // self.samples_per_shard
+                sample_index = doc_ix % self.samples_per_shard
 
-                        matched = False
-                        # Check offset
-                        if needle_offset + match_len <= len(
-                            doc_tokens
-                        ) and np.array_equal(
-                            doc_tokens[needle_offset : needle_offset + match_len],
-                            seq_arr,
-                        ):
-                            actual_offset = needle_offset
+                shard = FILE_INDEX_TO_SHARD[file_idx]
+
+                # Fallback mechanism
+                actual_offset = needle_offset
+                doc_tokens = self.massive_tokens[shard, sample_index]
+                match_len = len(seq_list)
+                seq_arr = np.array(seq_list, dtype=np.uint16)
+
+                matched = False
+                # Check offset
+                if needle_offset + match_len <= len(doc_tokens) and np.array_equal(
+                    doc_tokens[needle_offset : needle_offset + match_len],
+                    seq_arr,
+                ):
+                    actual_offset = needle_offset
+                    matched = True
+                # Check offset - 1
+                elif (
+                    needle_offset > 0
+                    and needle_offset - 1 + match_len <= len(doc_tokens)
+                    and np.array_equal(
+                        doc_tokens[needle_offset - 1 : needle_offset - 1 + match_len],
+                        seq_arr,
+                    )
+                ):
+                    actual_offset = needle_offset - 1
+                    matched = True
+
+                # Fallback: scan the whole document
+                if not matched:
+                    for i in range(len(doc_tokens) - match_len + 1):
+                        if np.array_equal(doc_tokens[i : i + match_len], seq_arr):
+                            actual_offset = i
                             matched = True
-                        # Check offset - 1
-                        elif (
-                            needle_offset > 0
-                            and needle_offset - 1 + match_len <= len(doc_tokens)
-                            and np.array_equal(
-                                doc_tokens[
-                                    needle_offset - 1 : needle_offset - 1 + match_len
-                                ],
-                                seq_arr,
-                            )
-                        ):
-                            actual_offset = needle_offset - 1
-                            matched = True
+                            break
 
-                        # Fallback: scan the whole document
-                        if not matched:
-                            for i in range(len(doc_tokens) - match_len + 1):
-                                if np.array_equal(
-                                    doc_tokens[i : i + match_len], seq_arr
-                                ):
-                                    actual_offset = i
-                                    matched = True
-                                    break
-
-                        results.append(
-                            QueryResult(
-                                shard=shard,
-                                sample_index=sample_index,
-                                token_offset=actual_offset,
-                            )
-                        )
+                results.append(
+                    QueryResult(
+                        shard=shard,
+                        sample_index=sample_index,
+                        token_offset=actual_offset,
+                        sequence=seq_list,
+                    )
+                )
         return results
 
     def query_sequences(
-        self, sequences: list[list[int] | np.ndarray]
-    ) -> list[dict[str, Any]]:
+        self,
+        sequences: list[list[int] | np.ndarray],
+        verbose: bool = True,
+    ) -> list[QueryResult]:
         """
         Queries multiple sequences in parallel.
         """
@@ -136,18 +137,20 @@ class InfiniGramSearcher:
             res = self.query_sequence(seq)
             return seq, res
 
-        print(
-            f"Querying {len(sequences)} sequences in parallel with {self.max_workers} workers..."
-        )
+        if verbose:
+            print(
+                f"Querying {len(sequences)} sequences in parallel with {self.max_workers} workers..."
+            )
         t0 = time.time()
 
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             results_iter = executor.map(worker, sequences)
 
             for seq, res in results_iter:
-                print(f"  Sequence {seq} yielded {len(res)} results.")
-                for r in res:
-                    all_results.append({"sequence": seq, "result": r})
+                if verbose:
+                    print(f"  Sequence {seq} yielded {len(res)} results.")
+                all_results.extend(res)
 
-        print(f"Parallel query completed in {time.time() - t0:.2f} seconds.")
+        if verbose:
+            print(f"Parallel query completed in {time.time() - t0:.2f} seconds.")
         return all_results
