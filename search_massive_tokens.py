@@ -48,6 +48,60 @@ class MassiveTokenSearcher:
 
         return self.infinigram_searcher.query_sequences(sequences, verbose=self.verbose)
 
+    def display_result(
+        self,
+        res: QueryResult,
+        context_len: int = 50,
+    ) -> str:
+        """
+        Returns a string representing a single search result in context.
+        """
+        seq = res.sequence
+        shard = res.shard
+        sample_idx = res.sample_index
+        offset = res.token_offset
+
+        doc_tokens = self.infinigram_searcher.massive_tokens[shard, sample_idx]
+
+        match_len = len(seq)
+        actual_offset = offset
+
+        # Check offset
+        if offset + match_len <= len(doc_tokens) and np.array_equal(
+            doc_tokens[offset : offset + match_len], seq
+        ):
+            actual_offset = offset
+        # Check offset - 1
+        elif (
+            offset > 0
+            and offset - 1 + match_len <= len(doc_tokens)
+            and np.array_equal(doc_tokens[offset - 1 : offset - 1 + match_len], seq)
+        ):
+            actual_offset = offset - 1
+        else:
+            print(
+                f"Warning: Sequence {seq} not found at offset {offset} or {offset - 1} in shard {shard}, sample {sample_idx}"
+            )
+            actual_offset = offset
+
+        start = max(0, actual_offset - context_len)
+        end = min(len(doc_tokens), actual_offset + match_len + context_len)
+
+        before_match = doc_tokens[start:actual_offset]
+        match_tokens = doc_tokens[actual_offset : actual_offset + match_len]
+        after_match = doc_tokens[actual_offset + match_len : end]
+
+        decoded_before = self.tokenizer.decode(before_match)
+        decoded_match = self.tokenizer.decode(match_tokens)
+        decoded_after = self.tokenizer.decode(after_match)
+
+        lines = [
+            f"Shard: {shard}, Sample: {sample_idx}, Offset: {offset}",
+            f"Context: ...{decoded_before}**{decoded_match}**{decoded_after}...",
+            "-" * 40,
+        ]
+        return "\n".join(lines)
+
     def display(
         self,
         query: str,
@@ -75,48 +129,7 @@ class MassiveTokenSearcher:
         print("=" * 80)
 
         for res in results[:limit]:
-            seq = res.sequence
-            shard = res.shard
-            sample_idx = res.sample_index
-            offset = res.token_offset
-
-            doc_tokens = self.infinigram_searcher.massive_tokens[shard, sample_idx]
-
-            match_len = len(seq)
-            actual_offset = offset
-
-            # Check offset
-            if offset + match_len <= len(doc_tokens) and np.array_equal(
-                doc_tokens[offset : offset + match_len], seq
-            ):
-                actual_offset = offset
-            # Check offset - 1
-            elif (
-                offset > 0
-                and offset - 1 + match_len <= len(doc_tokens)
-                and np.array_equal(doc_tokens[offset - 1 : offset - 1 + match_len], seq)
-            ):
-                actual_offset = offset - 1
-            else:
-                print(
-                    f"Warning: Sequence {seq} not found at offset {offset} or {offset - 1} in shard {shard}, sample {sample_idx}"
-                )
-                actual_offset = offset
-
-            start = max(0, actual_offset - context_len)
-            end = min(len(doc_tokens), actual_offset + match_len + context_len)
-
-            before_match = doc_tokens[start:actual_offset]
-            match_tokens = doc_tokens[actual_offset : actual_offset + match_len]
-            after_match = doc_tokens[actual_offset + match_len : end]
-
-            decoded_before = self.tokenizer.decode(before_match)
-            decoded_match = self.tokenizer.decode(match_tokens)
-            decoded_after = self.tokenizer.decode(after_match)
-
-            print(f"Shard: {shard}, Sample: {sample_idx}, Offset: {offset}")
-            print(f"Context: ...{decoded_before}**{decoded_match}**{decoded_after}...")
-            print("-" * 40)
+            print(self.display_result(res, context_len=context_len))
 
 
 if __name__ == "__main__":

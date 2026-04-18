@@ -32,7 +32,7 @@ class TestQueryMassiveTokens(unittest.TestCase):
             self.massive_tokens[case.shard, case.sample, case.start : case.end]
             for case in test_cases
         ]
-        
+
         results = self.searcher.query_sequences(sequences)
 
         for case in test_cases:
@@ -42,7 +42,7 @@ class TestQueryMassiveTokens(unittest.TestCase):
                 seq = self.massive_tokens[
                     case.shard, case.sample, case.start : case.end
                 ].tolist()
-                
+
                 found = False
                 for res in results:
                     if (
