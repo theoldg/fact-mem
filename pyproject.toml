@@ -11,6 +11,7 @@ dependencies = [
     "ipywidgets>=8.1.8",
     "jupyter>=1.1.1",
     "jupyterlab>=4.5.6",
+    "matplotlib>=3.10.8",
     "pandas>=3.0.2",
     "pip>=26.0.1",
     "pyarrow>=23.0.1",
