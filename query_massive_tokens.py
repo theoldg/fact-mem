@@ -36,11 +36,24 @@ def _get_file_index_to_shard() -> list[int]:
 FILE_INDEX_TO_SHARD = _get_file_index_to_shard()
 
 
+def deduplicate_results(results: list[QueryResult]) -> list[QueryResult]:
+    """Deduplicates QueryResult objects by (shard, sample_index, token_offset)."""
+    seen = set()
+    unique_results = []
+    for r in results:
+        key = (r.shard, r.sample_index, r.token_offset)
+        if key not in seen:
+            seen.add(key)
+            unique_results.append(r)
+    return unique_results
+
+
 class InfiniGramSearcher:
     def __init__(
         self,
         index_dir: str = "pile-data/index_dir",
         max_workers: int = 96,
+        verbose: bool = False,
     ):
         """
         Initializes the Infini-Gram searcher.
@@ -49,11 +62,14 @@ class InfiniGramSearcher:
             index_dir: The directory containing the Infini-Gram index.
             max_workers: Number of threads for parallel querying.
         """
-        print(f"Initializing InfiniGramEngine with index_dir={index_dir}...")
+        self.verbose = verbose
+        if self.verbose:
+            print(f"Initializing InfiniGramEngine with index_dir={index_dir}...")
         self.engine = InfiniGramEngine(
             index_dir=index_dir, eos_token_id=0, vocab_size=65535
         )
-        print("Loading massive_tokens memmap...")
+        if self.verbose:
+            print("Loading massive_tokens memmap...")
         self.massive_tokens = memmap_tokens(mode="r")
         self.samples_per_shard = STEPS_PER_CHECKPOINT * TOKENS_PER_CHECKPOINT
         self.max_workers = max_workers
@@ -129,12 +145,13 @@ class InfiniGramSearcher:
                         sequence=seq_list,
                     )
                 )
-        return results
+        
+        return deduplicate_results(results)
 
     def query_sequences(
         self,
         sequences: list[list[int] | np.ndarray],
-        verbose: bool = True,
+        verbose: bool = False,
     ) -> list[QueryResult]:
         """
         Queries multiple sequences in parallel.
@@ -161,4 +178,5 @@ class InfiniGramSearcher:
 
         if verbose:
             print(f"Parallel query completed in {time.time() - t0:.2f} seconds.")
-        return all_results
+            
+        return deduplicate_results(all_results)

@@ -5,7 +5,7 @@ from token_superset_bpe import BPETokenSupersetSearcher
 class TestBPETokenSupersetSearcher(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.searcher = BPETokenSupersetSearcher()
+        cls.searcher = BPETokenSupersetSearcher(verbose=False)
 
     def test_edge_cases(self):
         test_strings = [

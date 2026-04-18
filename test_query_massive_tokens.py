@@ -16,7 +16,7 @@ class TestQueryMassiveTokens(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.massive_tokens = memmap_tokens(mode="r")
-        cls.searcher = InfiniGramSearcher()
+        cls.searcher = InfiniGramSearcher(verbose=False)
 
     def test_query_sequences(self):
         # Define test cases using dataclass

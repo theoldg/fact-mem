@@ -7,13 +7,17 @@ import fire
 import pickle
 from pathlib import Path
 from transformers import AutoTokenizer
+import logging
+
+logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
 
 
 class BPETokenSupersetSearcher:
     """Searcher for token sequences that form a superset of a given string."""
 
-    def __init__(self, model_name: str = "EleutherAI/pythia-70m") -> None:
+    def __init__(self, model_name: str = "EleutherAI/pythia-70m", verbose: bool = True) -> None:
         """Initialize the searcher with a model."""
+        self.verbose = verbose
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.vocab = self.tokenizer.get_vocab()
         self.id_to_token = {v: k for k, v in self.vocab.items()}
@@ -29,30 +33,36 @@ class BPETokenSupersetSearcher:
         suffix_cache_path = cache_dir / "suffix_index.pkl"
 
         if prefix_cache_path.exists() and suffix_cache_path.exists():
-            print("Loading indexes from cache...")
+            if self.verbose:
+                print("Loading indexes from cache...")
             with open(prefix_cache_path, "rb") as f:
                 self.prefix_index = pickle.load(f)
             with open(suffix_cache_path, "rb") as f:
                 self.suffix_index = pickle.load(f)
-            print("Indexes loaded from cache.")
+            if self.verbose:
+                print("Indexes loaded from cache.")
         else:
             self.suffix_index = collections.defaultdict(list)
             self.prefix_index = collections.defaultdict(list)
 
-            print("Building indexes...")
+            if self.verbose:
+                print("Building indexes...")
             for token, id in self.vocab.items():
                 for i in range(1, len(token) + 1):
                     self.suffix_index[token[-i:]].append(id)
                     self.prefix_index[token[:i]].append(id)
-            print("Indexes built.")
+            if self.verbose:
+                print("Indexes built.")
 
-            print("Caching indexes...")
+            if self.verbose:
+                print("Caching indexes...")
             cache_dir.mkdir(parents=True, exist_ok=True)
             with open(prefix_cache_path, "wb") as f:
                 pickle.dump(self.prefix_index, f)
             with open(suffix_cache_path, "wb") as f:
                 pickle.dump(self.suffix_index, f)
-            print("Indexes cached.")
+            if self.verbose:
+                print("Indexes cached.")
 
     def get_bpe_representation(self, text: str) -> str:
         """Get the BPE representation of a string by concatenating its tokens."""
@@ -62,18 +72,21 @@ class BPETokenSupersetSearcher:
         return "".join(tokens)
 
     def search(
-        self, target_string: str, regex_pattern: str | None = None
+        self, target_string: str, regex_pattern: str | None = None, verbose: bool | None = None
     ) -> list[list[int]]:
         """Search for minimal token sequences covering the target string."""
+        if verbose is None:
+            verbose = self.verbose
         S_bpe = self.get_bpe_representation(target_string)
         target_ids = self.tokenizer.encode(target_string, add_special_tokens=False)
-        print(f"BPE representation of {target_string!r}: {S_bpe!r}")
+        if verbose:
+            print(f"BPE representation of {target_string!r}: {S_bpe!r}")
 
         results = []
         L = len(S_bpe)
         max_depth = len(target_ids) + 3
 
-        pbar = tqdm(desc="Exploring states", unit="states")
+        pbar = tqdm(desc="Exploring states", unit="states", disable=not verbose)
 
         # Case k = 1: S_bpe is a substring of a single token
         for token, id in self.vocab.items():
@@ -116,13 +129,14 @@ class BPETokenSupersetSearcher:
                     results.append([v1] + list(sub_seq))
 
         pbar.close()
-        print("BPE search complete. Post-processing results...")
+        if verbose:
+            print("BPE search complete. Post-processing results...")
 
         # Filter for minimality and uniqueness
         unique_results = []
         seen = set()
 
-        for seq in tqdm(results, desc="Post-processing results"):
+        for seq in tqdm(results, desc="Post-processing results", disable=not verbose):
             seq_tuple = tuple(seq)
             if seq_tuple in seen:
                 continue
@@ -154,10 +168,10 @@ class BPETokenSupersetSearcher:
         return unique_results
 
 
-def main(target: str, regex: str | None = None) -> None:
+def main(target: str, regex: str | None = None, verbose: bool = False) -> None:
     """Main function to run the search from CLI."""
-    searcher = BPETokenSupersetSearcher()
-    res = searcher.search(target, regex_pattern=regex)
+    searcher = BPETokenSupersetSearcher(verbose=verbose)
+    res = searcher.search(target, regex_pattern=regex, verbose=verbose)
     print(f"Found {len(res)} minimal sequences.")
     for r in res[:10]:
         decoded = searcher.tokenizer.decode(r)

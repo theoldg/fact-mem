@@ -2,6 +2,7 @@
 import fire
 import numpy as np
 import re
+from tqdm import tqdm
 
 from token_superset_bpe import BPETokenSupersetSearcher
 from query_massive_tokens import InfiniGramSearcher, QueryResult, ContextResult
@@ -13,7 +14,7 @@ class MassiveTokenSearcher:
         index_dir: str = "pile-data/index_dir",
         model_name: str = "EleutherAI/pythia-70m",
         max_workers: int = 96,
-        verbose: bool = True,
+        verbose: bool = False,
     ):
         """
         Initializes the searcher with a BPE searcher and an Infini-Gram searcher.
@@ -27,11 +28,11 @@ class MassiveTokenSearcher:
         self.verbose = verbose
         if self.verbose:
             print("Initializing BPETokenSupersetSearcher...")
-        self.bpe_searcher = BPETokenSupersetSearcher(model_name=model_name)
+        self.bpe_searcher = BPETokenSupersetSearcher(model_name=model_name, verbose=self.verbose)
         self.tokenizer = self.bpe_searcher.tokenizer
 
         self.infinigram_searcher = InfiniGramSearcher(
-            index_dir=index_dir, max_workers=max_workers
+            index_dir=index_dir, max_workers=max_workers, verbose=self.verbose
         )
 
     def search(
@@ -65,7 +66,7 @@ class MassiveTokenSearcher:
         )
 
         results_with_context = []
-        for r in results:
+        for r in tqdm(results, disable=not self.verbose, desc="Extracting context"):
             context = self.get_context(r, context_len=context_len)
             full_context = context.before + context.match + context.after
             if re.search(regex, full_context):

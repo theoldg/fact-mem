@@ -9,9 +9,9 @@ class TestSearchFallback(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         print("Initializing InfiniGramSearcher for tests...")
-        cls.infinigram_searcher = InfiniGramSearcher()
+        cls.infinigram_searcher = InfiniGramSearcher(verbose=False)
         cls.massive_tokens = memmap_tokens(mode="r")
-        cls.searcher = BPETokenSupersetSearcher()
+        cls.searcher = BPETokenSupersetSearcher(verbose=False)
         cls.tokenizer = cls.searcher.tokenizer
 
     def test_specific_failure(self):
