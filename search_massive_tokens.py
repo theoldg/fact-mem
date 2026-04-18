@@ -1,11 +1,16 @@
-import html
-
-import IPython.display
+from dataclasses import dataclass
 import fire
 import numpy as np
 
 from token_superset_bpe import BPETokenSupersetSearcher
 from query_massive_tokens import InfiniGramSearcher, QueryResult
+
+
+@dataclass(frozen=True)
+class ContextResult:
+    before: str
+    match: str
+    after: str
 
 
 class MassiveTokenSearcher:
@@ -54,9 +59,13 @@ class MassiveTokenSearcher:
         if self.verbose:
             print(f"Found {len(sequences)} token sequences for query {query!r}")
 
-        return self.infinigram_searcher.query_sequences(sequences, verbose=self.verbose)
+        results = self.infinigram_searcher.query_sequences(
+            sequences, verbose=self.verbose
+        )
+        results.sort(key=lambda x: (x.shard, x.sample_index))
+        return results
 
-    def _get_context(self, res: QueryResult, context_len: int) -> tuple[str, str, str]:
+    def get_context(self, res: QueryResult, context_len: int) -> ContextResult:
         """Extracts and decodes context around the match in a QueryResult."""
         seq = res.sequence
         shard = res.shard
@@ -95,76 +104,20 @@ class MassiveTokenSearcher:
         decoded_match = self.tokenizer.decode(match_tokens)
         decoded_after = self.tokenizer.decode(after_match)
 
-        return decoded_before, decoded_match, decoded_after
+        return ContextResult(
+            before=decoded_before, match=decoded_match, after=decoded_after
+        )
 
     def display_single_result(self, res: QueryResult, context_len: int = 50) -> str:
         """Returns a string representing a single search result in context."""
-        decoded_before, decoded_match, decoded_after = self._get_context(
-            res, context_len
-        )
+        context = self.get_context(res, context_len)
 
         lines = [
             f"Shard: {res.shard}, Sample: {res.sample_index}, Offset: {res.token_offset}",
-            f"Context: ...{decoded_before}**{decoded_match}**{decoded_after}...",
+            f"Context: ...{context.before}**{context.match}**{context.after}...",
             "-" * 40,
         ]
         return "\n".join(lines)
-
-    def visualize_result_html(self, res: QueryResult, context_len: int = 50):
-        """Creates an HTML visualization of a single search result for Jupyter Notebooks."""
-        decoded_before, decoded_match, decoded_after = self._get_context(
-            res, context_len
-        )
-
-        # Escape HTML special characters
-        decoded_before = html.escape(decoded_before)
-        decoded_match = html.escape(decoded_match)
-        decoded_after = html.escape(decoded_after)
-
-        html_str = f"""
-        <div style="
-            border: 1px solid #e0e0e0; 
-            padding: 15px; 
-            margin: 10px 0; 
-            border-radius: 8px; 
-            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-            background-color: #ffffff;
-        ">
-            <table style="
-                width: 100%; 
-                border-collapse: collapse; 
-                margin-bottom: 15px;
-                font-size: 13px;
-            ">
-                <thead>
-                    <tr style="background-color: #f7f9fc; color: #5c6b73;">
-                        <th style="padding: 8px; border-bottom: 1px solid #e0e0e0; text-align: center; font-weight: 600;">Shard</th>
-                        <th style="padding: 8px; border-bottom: 1px solid #e0e0e0; text-align: center; font-weight: 600;">Sample Index</th>
-                        <th style="padding: 8px; border-bottom: 1px solid #e0e0e0; text-align: center; font-weight: 600;">Token Offset</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr style="color: #2c3e50;">
-                        <td style="padding: 8px; text-align: center;">{res.shard}</td>
-                        <td style="padding: 8px; text-align: center;">{res.sample_index}</td>
-                        <td style="padding: 8px; text-align: center;">{res.token_offset}</td>
-                    </tr>
-                </tbody>
-            </table>
-            <div style="
-                font-size: 15px; 
-                line-height: 1.6; 
-                color: #333;
-                padding: 10px;
-                background-color: #fafafa;
-                border-radius: 4px;
-            ">
-                <span style="color: #999;">...</span>{decoded_before}<span style="color: #e74c3c; font-weight: 700; background-color: #fdedec; padding: 2px 4px; border-radius: 3px;">{decoded_match}</span>{decoded_after}<span style="color: #999;">...</span>
-            </div>
-        </div>
-        """
-        return IPython.display.HTML(html_str)
 
     def display(
         self,
