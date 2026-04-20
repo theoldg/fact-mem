@@ -1,4 +1,3 @@
-
 import fire
 import numpy as np
 import re
@@ -28,55 +27,16 @@ class MassiveTokenSearcher:
         self.verbose = verbose
         if self.verbose:
             print("Initializing BPETokenSupersetSearcher...")
-        self.bpe_searcher = BPETokenSupersetSearcher(model_name=model_name, verbose=self.verbose)
+        self.bpe_searcher = BPETokenSupersetSearcher(
+            model_name=model_name, verbose=self.verbose
+        )
         self.tokenizer = self.bpe_searcher.tokenizer
 
         self.infinigram_searcher = InfiniGramSearcher(
             index_dir=index_dir, max_workers=max_workers, verbose=self.verbose
         )
 
-    def search(
-        self,
-        query: str,
-        regex: str | None = None,
-        context_len: int = 50,
-    ) -> list[QueryResult]:
-        """
-        Finds all token representations for a query and returns all matches in the dataset.
-
-        Args:
-            query: The string to search for.
-            regex: Optional regex pattern to filter token sequences.
-            context_len: Number of tokens to show before and after the match.
-
-        Returns:
-            A list of dicts containing the matching sequence and the result location.
-        """
-        if regex is None:
-            if self.verbose:
-                print(r"Using default regex: \b{query}\b")
-            regex = r"\b" + query + r"\b"
-
-        sequences = self.bpe_searcher.search(query, regex_pattern=regex)
-        if self.verbose:
-            print(f"Found {len(sequences)} token sequences for query {query!r}")
-
-        results = self.infinigram_searcher.query_sequences(
-            sequences, verbose=self.verbose
-        )
-
-        results_with_context = []
-        for r in tqdm(results, disable=not self.verbose, desc="Extracting context"):
-            context = self.get_context(r, context_len=context_len)
-            full_context = context.before + context.match + context.after
-            if re.search(regex, full_context):
-                r.context = context
-                results_with_context.append(r)
-
-        results_with_context.sort(key=lambda x: (x.shard, x.sample_index))
-        return results_with_context
-
-    def get_context(self, res: QueryResult, context_len: int) -> ContextResult:
+    def _get_context(self, res: QueryResult, context_len: int) -> ContextResult:
         """Extracts and decodes context around the match in a QueryResult."""
         seq = res.sequence
         shard = res.shard
@@ -119,11 +79,52 @@ class MassiveTokenSearcher:
             before=decoded_before, match=decoded_match, after=decoded_after
         )
 
+    def search(
+        self,
+        query: str,
+        regex: str | None = None,
+        context_len: int = 50,
+    ) -> list[QueryResult]:
+        """
+        Finds all token representations for a query and returns all matches in the dataset.
+
+        Args:
+            query: The string to search for.
+            regex: Optional regex pattern to filter token sequences.
+            context_len: Number of tokens to show before and after the match.
+
+        Returns:
+            A list of dicts containing the matching sequence and the result location.
+        """
+        if regex is None:
+            if self.verbose:
+                print(r"Using default regex: \b{query}\b")
+            regex = r"\b" + query + r"\b"
+
+        sequences = self.bpe_searcher.search(query, regex_pattern=regex)
+        if self.verbose:
+            print(f"Found {len(sequences)} token sequences for query {query!r}")
+
+        results = self.infinigram_searcher.query_sequences(
+            sequences, verbose=self.verbose
+        )
+
+        results_with_context = []
+        for r in tqdm(results, disable=not self.verbose, desc="Extracting context"):
+            context = self._get_context(r, context_len=context_len)
+            full_context = context.before + context.match + context.after
+            if re.search(regex, full_context):
+                r.context = context
+                results_with_context.append(r)
+
+        results_with_context.sort(key=lambda x: (x.shard, x.sample_index))
+        return results_with_context
+
     def display_single_result(self, res: QueryResult, context_len: int = 50) -> str:
         """Returns a string representing a single search result in context."""
         context = res.context
         if context is None:
-            context = self.get_context(res, context_len)
+            context = self._get_context(res, context_len)
 
         lines = [
             f"Shard: {res.shard}, Sample: {res.sample_index}, Offset: {res.token_offset}",
@@ -131,36 +132,3 @@ class MassiveTokenSearcher:
             "-" * 40,
         ]
         return "\n".join(lines)
-
-    def display(
-        self,
-        query: str,
-        context_len: int = 50,
-        limit: int = 10,
-        regex: str | None = None,
-    ):
-        """
-        Searches for a query and displays the results in context.
-
-        Args:
-            query: The string to search for.
-            context_len: Number of tokens to show before and after the match.
-            limit: Maximum number of results to display.
-            regex: Optional regex pattern to filter token sequences.
-        """
-        results = self.search(query, regex=regex, context_len=context_len)
-
-        if not results:
-            print("No results found.")
-            return
-
-        print(f"\nTotal matches found across all sequences: {len(results)}")
-        print(f"Displaying top {min(limit, len(results))} results for query: {query!r}")
-        print("=" * 80)
-
-        for res in results[:limit]:
-            print(self.display_result(res, context_len=context_len))
-
-
-if __name__ == "__main__":
-    fire.Fire(MassiveTokenSearcher)
