@@ -1,13 +1,15 @@
 from dataclasses import dataclass
 import numpy as np
 from infini_gram.engine import InfiniGramEngine
+from concurrent.futures import ThreadPoolExecutor
+import time
+from tqdm import tqdm
+
 from build_massive_tokens import (
     STEPS_PER_CHECKPOINT,
     TOKENS_PER_CHECKPOINT,
     memmap_tokens,
 )
-from concurrent.futures import ThreadPoolExecutor
-import time
 
 
 @dataclass(frozen=True)
@@ -89,62 +91,67 @@ class InfiniGramSearcher:
         if not isinstance(find_res, dict) or "segment_by_shard" not in find_res:
             return results
 
-        for s, (start, end) in enumerate(find_res["segment_by_shard"]):
-            for rank in range(start, end):
-                doc = self.engine.get_doc_by_rank(s=s, rank=rank)
-                if not isinstance(doc, dict) or "doc_ix" not in doc:
-                    continue
+        shard_rank = [
+            (shard, rank)
+            for shard, (start, end) in enumerate(find_res["segment_by_shard"])
+            for rank in range(start, end)
+        ]
 
-                doc_ix = doc["doc_ix"]
-                needle_offset = doc["needle_offset"]
+        for shard, rank in tqdm(shard_rank, 'Post-processing results'):
+            doc = self.engine.get_doc_by_rank(s=shard, rank=rank)
+            if not isinstance(doc, dict) or "doc_ix" not in doc:
+                continue
 
-                file_idx = doc_ix // self.samples_per_shard
-                sample_index = doc_ix % self.samples_per_shard
+            doc_ix = doc["doc_ix"]
+            needle_offset = doc["needle_offset"]
 
-                shard = FILE_INDEX_TO_SHARD[file_idx]
+            file_idx = doc_ix // self.samples_per_shard
+            sample_index = doc_ix % self.samples_per_shard
 
-                # Fallback mechanism
+            shard = FILE_INDEX_TO_SHARD[file_idx]
+
+            # Fallback mechanism
+            actual_offset = needle_offset
+            doc_tokens = self.massive_tokens[shard, sample_index]
+            match_len = len(seq_list)
+            seq_arr = np.array(seq_list, dtype=np.uint16)
+
+            matched = False
+            # Check offset
+            if needle_offset + match_len <= len(doc_tokens) and np.array_equal(
+                doc_tokens[needle_offset : needle_offset + match_len],
+                seq_arr,
+            ):
                 actual_offset = needle_offset
-                doc_tokens = self.massive_tokens[shard, sample_index]
-                match_len = len(seq_list)
-                seq_arr = np.array(seq_list, dtype=np.uint16)
-
-                matched = False
-                # Check offset
-                if needle_offset + match_len <= len(doc_tokens) and np.array_equal(
-                    doc_tokens[needle_offset : needle_offset + match_len],
+                matched = True
+            # Check offset - 1
+            elif (
+                needle_offset > 0
+                and needle_offset - 1 + match_len <= len(doc_tokens)
+                and np.array_equal(
+                    doc_tokens[needle_offset - 1 : needle_offset - 1 + match_len],
                     seq_arr,
-                ):
-                    actual_offset = needle_offset
-                    matched = True
-                # Check offset - 1
-                elif (
-                    needle_offset > 0
-                    and needle_offset - 1 + match_len <= len(doc_tokens)
-                    and np.array_equal(
-                        doc_tokens[needle_offset - 1 : needle_offset - 1 + match_len],
-                        seq_arr,
-                    )
-                ):
-                    actual_offset = needle_offset - 1
-                    matched = True
-
-                # Fallback: scan the whole document
-                if not matched:
-                    for i in range(len(doc_tokens) - match_len + 1):
-                        if np.array_equal(doc_tokens[i : i + match_len], seq_arr):
-                            actual_offset = i
-                            matched = True
-                            break
-
-                results.append(
-                    QueryResult(
-                        shard=shard,
-                        sample_index=sample_index,
-                        token_offset=actual_offset,
-                        sequence=seq_list,
-                    )
                 )
+            ):
+                actual_offset = needle_offset - 1
+                matched = True
+
+            # Fallback: scan the whole document
+            if not matched:
+                for i in range(len(doc_tokens) - match_len + 1):
+                    if np.array_equal(doc_tokens[i : i + match_len], seq_arr):
+                        actual_offset = i
+                        matched = True
+                        break
+
+            results.append(
+                QueryResult(
+                    shard=shard,
+                    sample_index=sample_index,
+                    token_offset=actual_offset,
+                    sequence=seq_list,
+                )
+            )
         
         return deduplicate_results(results)
 
