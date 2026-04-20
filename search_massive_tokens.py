@@ -106,19 +106,22 @@ class MassiveTokenSearcher:
             print(f"Found {len(sequences)} token sequences for query {query!r}")
 
         results = self.infinigram_searcher.query_sequences(
-            sequences, verbose=self.verbose
+            sequences,
+            verbose=self.verbose,
+            post_process=context_len > 0,
         )
 
-        results_with_context = []
-        for r in tqdm(results, disable=not self.verbose, desc="Extracting context"):
-            context = self._get_context(r, context_len=context_len)
-            full_context = context.before + context.match + context.after
-            if re.search(regex, full_context):
-                r.context = context
-                results_with_context.append(r)
+        if context_len > 0:
+            for result in tqdm(
+                results, disable=not self.verbose, desc="Extracting context"
+            ):
+                context = self._get_context(result, context_len=context_len)
+                full_context = context.before + context.match + context.after
+                if re.search(regex, full_context):
+                    result.context = context
 
-        results_with_context.sort(key=lambda x: (x.shard, x.sample_index))
-        return results_with_context
+        results.sort(key=lambda x: (x.shard, x.sample_index))
+        return results
 
     def display_single_result(self, res: QueryResult, context_len: int = 50) -> str:
         """Returns a string representing a single search result in context."""

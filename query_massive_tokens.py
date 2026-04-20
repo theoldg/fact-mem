@@ -3,7 +3,6 @@ import numpy as np
 from infini_gram.engine import InfiniGramEngine
 from concurrent.futures import ThreadPoolExecutor
 import time
-from tqdm import tqdm
 
 from build_massive_tokens import (
     STEPS_PER_CHECKPOINT,
@@ -90,7 +89,9 @@ class InfiniGramSearcher:
         Queries a single sequence and returns raw results (shard, sample_index, token_offset)
         without looking up sequences or applying fallback by default.
         """
-        find_res = self.engine.find(input_ids=list(seq))
+        seq = list(seq)
+
+        find_res = self.engine.find(input_ids=seq)
         results = []
 
         if not isinstance(find_res, dict) or "segment_by_shard" not in find_res:
@@ -118,10 +119,11 @@ class InfiniGramSearcher:
             sample_index = doc_ix % self.samples_per_shard
             shard = FILE_INDEX_TO_SHARD[file_idx]
             results.append(
-                RawQueryResult(
+                QueryResult(
                     shard=shard,
                     sample_index=sample_index,
                     token_offset=needle_offset,
+                    sequence=seq,
                 )
             )
 
@@ -137,7 +139,7 @@ class InfiniGramSearcher:
         match_len = len(seq)
         seq_arr = np.array(seq, dtype=np.uint16)
 
-        for r in tqdm(raw_results, "Post-processing results"):
+        for r in raw_results:
             doc_tokens = self.massive_tokens[r.shard, r.sample_index]
 
             actual_offset = r.token_offset
@@ -181,6 +183,7 @@ class InfiniGramSearcher:
     def query_sequences(
         self,
         sequences: list[list[int] | np.ndarray],
+        post_process: bool = True,
         verbose: bool = False,
     ) -> list[QueryResult]:
         """
@@ -192,7 +195,10 @@ class InfiniGramSearcher:
             seq = list(seq)
             # Pass max_disp_len=None to get the default behavior (which usually finds correct offset)
             raw_results = self.query_sequence_raw(seq, max_disp_len=None)
-            return seq, self.post_process_results(raw_results, seq)
+            if post_process:
+                return seq, self.post_process_results(raw_results, seq)
+            else:
+                return seq, raw_results
 
         if verbose:
             print(
