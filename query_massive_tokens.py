@@ -28,6 +28,13 @@ class QueryResult:
     context: ContextResult | None = None
 
 
+@dataclass
+class RawQueryResult:
+    shard: int
+    sample_index: int
+    token_offset: int
+
+
 def _get_file_index_to_shard() -> list[int]:
     """Creates mapping from file index to shard index due to lexicographical sorting by Infini-Gram."""
     filenames = [f"tokenized.{i}" for i in range(95)]
@@ -76,16 +83,14 @@ class InfiniGramSearcher:
         self.samples_per_shard = STEPS_PER_CHECKPOINT * TOKENS_PER_CHECKPOINT
         self.max_workers = max_workers
 
-    def query_sequence(self, seq: list[int] | np.ndarray) -> list[QueryResult]:
+    def query_sequence_raw(
+        self, seq: list[int] | np.ndarray, max_disp_len: int | None = 0
+    ) -> list[RawQueryResult]:
         """
-        Queries a single sequence and applies fallback mechanism if offset is wrong.
+        Queries a single sequence and returns raw results (shard, sample_index, token_offset)
+        without looking up sequences or applying fallback by default.
         """
-        if isinstance(seq, np.ndarray):
-            seq_list = seq.tolist()
-        else:
-            seq_list = seq
-
-        find_res = self.engine.find(input_ids=seq_list)
+        find_res = self.engine.find(input_ids=list(seq))
         results = []
 
         if not isinstance(find_res, dict) or "segment_by_shard" not in find_res:
@@ -97,62 +102,80 @@ class InfiniGramSearcher:
             for rank in range(start, end)
         ]
 
-        for shard, rank in tqdm(shard_rank, 'Post-processing results'):
-            doc = self.engine.get_doc_by_rank(s=shard, rank=rank)
+        # Use get_docs_by_ranks. max_disp_len=0 avoids looking up sequences.
+        docs = self.engine.get_docs_by_ranks(shard_rank, max_disp_len=max_disp_len)
+
+        if not isinstance(docs, list):
+            return results
+
+        for (shard_idx, rank), doc in zip(shard_rank, docs):
             if not isinstance(doc, dict) or "doc_ix" not in doc:
                 continue
 
             doc_ix = doc["doc_ix"]
-            needle_offset = doc["needle_offset"]
-
+            needle_offset = doc.get("needle_offset", 0)
             file_idx = doc_ix // self.samples_per_shard
             sample_index = doc_ix % self.samples_per_shard
-
             shard = FILE_INDEX_TO_SHARD[file_idx]
+            results.append(
+                RawQueryResult(
+                    shard=shard,
+                    sample_index=sample_index,
+                    token_offset=needle_offset,
+                )
+            )
 
-            # Fallback mechanism
-            actual_offset = needle_offset
-            doc_tokens = self.massive_tokens[shard, sample_index]
-            match_len = len(seq_list)
-            seq_arr = np.array(seq_list, dtype=np.uint16)
+        return results
 
-            matched = False
+    def post_process_results(
+        self, raw_results: list[RawQueryResult], seq: list[int] | np.ndarray
+    ) -> list[QueryResult]:
+        """
+        Post-processes raw results by verifying offsets and populating QueryResult.
+        """
+        results = []
+        match_len = len(seq)
+        seq_arr = np.array(seq, dtype=np.uint16)
+
+        for r in tqdm(raw_results, "Post-processing results"):
+            doc_tokens = self.massive_tokens[r.shard, r.sample_index]
+
+            actual_offset = r.token_offset
+
             # Check offset
-            if needle_offset + match_len <= len(doc_tokens) and np.array_equal(
-                doc_tokens[needle_offset : needle_offset + match_len],
+            if r.token_offset + match_len <= len(doc_tokens) and np.array_equal(
+                doc_tokens[r.token_offset : r.token_offset + match_len],
                 seq_arr,
             ):
-                actual_offset = needle_offset
-                matched = True
+                actual_offset = r.token_offset
             # Check offset - 1
             elif (
-                needle_offset > 0
-                and needle_offset - 1 + match_len <= len(doc_tokens)
+                r.token_offset > 0
+                and r.token_offset - 1 + match_len <= len(doc_tokens)
                 and np.array_equal(
-                    doc_tokens[needle_offset - 1 : needle_offset - 1 + match_len],
+                    doc_tokens[r.token_offset - 1 : r.token_offset - 1 + match_len],
                     seq_arr,
                 )
             ):
-                actual_offset = needle_offset - 1
-                matched = True
-
-            # Fallback: scan the whole document
-            if not matched:
+                actual_offset = r.token_offset - 1
+            else:
+                # Fallback: scan the whole document
                 for i in range(len(doc_tokens) - match_len + 1):
                     if np.array_equal(doc_tokens[i : i + match_len], seq_arr):
                         actual_offset = i
-                        matched = True
                         break
+                else:
+                    continue
 
             results.append(
                 QueryResult(
-                    shard=shard,
-                    sample_index=sample_index,
+                    shard=r.shard,
+                    sample_index=r.sample_index,
                     token_offset=actual_offset,
-                    sequence=seq_list,
+                    sequence=list(seq),
                 )
             )
-        
+
         return deduplicate_results(results)
 
     def query_sequences(
@@ -165,9 +188,11 @@ class InfiniGramSearcher:
         """
         all_results = []
 
-        def worker(seq):
-            res = self.query_sequence(seq)
-            return seq, res
+        def worker(seq: list[int] | np.ndarray):
+            seq = list(seq)
+            # Pass max_disp_len=None to get the default behavior (which usually finds correct offset)
+            raw_results = self.query_sequence_raw(seq, max_disp_len=None)
+            return seq, self.post_process_results(raw_results, seq)
 
         if verbose:
             print(
@@ -185,5 +210,5 @@ class InfiniGramSearcher:
 
         if verbose:
             print(f"Parallel query completed in {time.time() - t0:.2f} seconds.")
-            
+
         return deduplicate_results(all_results)
