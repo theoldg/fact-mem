@@ -1,34 +1,96 @@
-from query_massive_tokens import QueryResult
 import html
 import IPython
+from collections import Counter
+import matplotlib.pyplot as plt
+
+from query_massive_tokens import QueryResult
 
 
 def plot_shard_histogram(results: list[QueryResult]):
     """
-    Plots a histogram of results per shard.
+    Plots a histogram of results per shard and returns the figure object.
     """
-    import matplotlib.pyplot as plt
-    from collections import Counter
-
     shards = [r.shard for r in results]
     counts = Counter(shards)
 
-    # Show all shards from 0 to 94
     x = list(range(95))
     y = [counts.get(s, 0) for s in x]
 
-    plt.figure(figsize=(15, 5))
-    plt.bar(x, y, color="#3498db", edgecolor="white")
-    plt.xlabel("Shard", fontsize=12)
-    plt.ylabel("Match Count", fontsize=12)
-    plt.title(f"Distribution of Matches across Shards (Total: {len(results)})", fontsize=14)
-    plt.grid(axis="y", linestyle="--", alpha=0.7)
+    fig, ax = plt.subplots(figsize=(6, 4))
 
-    # Improve x-ticks readability
-    plt.xticks(range(0, 95, 5))
+    ax.bar(x, y, color="#3498db", edgecolor="white")
 
-    plt.tight_layout()
-    plt.show()
+    ax.set_xlabel("Shard", fontsize=8)
+    ax.set_ylabel("Match Count", fontsize=8)
+    ax.set_title(
+        f"Distribution of Matches across Shards (Total: {len(results)})",
+        fontsize=8,
+    )
+
+    ax.grid(axis="y", linestyle="--", alpha=0.7)
+    ax.set_xticks(range(0, 95, 5))
+
+    fig.tight_layout()
+    plt.close(fig)
+
+    return fig
+
+
+def plot_stacked_shard_histogram(results_map: dict[str, list["QueryResult"]]):
+    """
+    Plots a single histogram where shards are stacked by category with
+    explicit y-axis headroom to prevent clipping.
+    """
+    x = list(range(95))
+    fig, ax = plt.subplots(figsize=(8, 5))
+
+    bottoms = [0] * 95
+    total_matches = 0
+    colors = plt.cm.tab10.colors
+
+    for i, (label, results) in enumerate(results_map.items()):
+        counts = Counter(r.shard for r in results)
+        y = [counts.get(s, 0) for s in x]
+
+        ax.bar(
+            x,
+            y,
+            bottom=bottoms,
+            label=label,
+            color=colors[i % len(colors)],
+            edgecolor="white",
+            linewidth=0.5,
+        )
+
+        # Update bottoms for the next category
+        bottoms = [b + v for b, v in zip(bottoms, y)]
+        total_matches += len(results)
+
+    # --- THE FIX: SET EXPLICIT HEADROOM ---
+    max_height = max(bottoms) if bottoms else 0
+    if max_height > 0:
+        # Adds 15% padding to the top so bars don't touch the title/border
+        ax.set_ylim(0, max_height * 1.15)
+
+    ax.set_xlabel("Shard", fontsize=9)
+    ax.set_ylabel("Match Count", fontsize=9)
+    ax.set_title(
+        f"Distribution of Matches across Shards (Total: {total_matches})",
+        fontsize=10,
+        fontweight="bold",
+    )
+
+    ax.grid(axis="y", linestyle="--", alpha=0.5)
+    ax.set_xticks(range(0, 95, 5))
+
+    # Place legend inside the plot, but the extra ylim ensures it won't
+    # overlap the highest bars as easily
+    ax.legend(fontsize=8, frameon=True, loc="upper right")
+
+    fig.tight_layout()
+    plt.close(fig)
+
+    return fig
 
 
 def visualize_result_html(

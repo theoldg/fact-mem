@@ -33,7 +33,7 @@ CHECKPOINT_INTERVAL = 1000
 
 
 @dataclass
-class TextCompletionnStats:
+class TextCompletionStats:
     total_surprisal: float
     avg_surprisal: float
     perplexity: float
@@ -113,7 +113,7 @@ class PythiaModel:
         last_token_logits = logits[0, -1, :]
         return NextTokenDistribution(logits=last_token_logits, tokenizer=self.tokenizer)
 
-    def text_completion_stats(self, prefix: str, suffix: str) -> TextCompletionnStats:
+    def text_completion_stats(self, prefix: str, suffix: str) -> TextCompletionStats:
         """
         Measures how well the model knows a fact by computing the surprisal
         and perplexity of the suffix given the prefix.
@@ -154,7 +154,7 @@ class PythiaModel:
         avg_surprisal = surprisal.mean().item()
         perplexity = torch.exp(surprisal.mean()).item()
 
-        return TextCompletionnStats(
+        return TextCompletionStats(
             total_surprisal=total_surprisal,
             avg_surprisal=avg_surprisal,
             perplexity=perplexity,
